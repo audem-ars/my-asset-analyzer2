@@ -1,0 +1,46 @@
+/* theme-override.css */
+.bg-background {
+  background-color: transparent !important;
+  z-index: 1;
+}
+
+.bg-popover {
+  background-color: rgba(17, 24, 39, 0.95) !important;
+}
+
+.bg-card {
+  background-color: rgba(17, 24, 39, 0.95) !important;
+  z-index: 1;
+}
+
+.text-popover-foreground {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+[cmdk-overlay] {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+[cmdk-input] {
+  background-color: rgba(17, 24, 39, 0.95) !important;
+  color: white !important;
+}
+
+.border-border {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.text-muted-foreground {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+select {
+  position: relative;
+  z-index: 50;
+}
+
+select option {
+  background-color: rgba(26, 31, 45, 1) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  z-index: 100;
+}
