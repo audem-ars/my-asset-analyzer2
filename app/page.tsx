@@ -1,22 +1,27 @@
 "use client"
+
 import dynamic from 'next/dynamic'
-import { Suspense } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 
-// Comment out AssetAnalyzer temporarily
-// const AssetAnalyzer = dynamic(() => import('@/components/AssetAnalyzer'), {
-//   ssr: false,
-// })
-
-const FREDTest = dynamic(() => import('@/components/AssetAnalyzer'), {
+const AssetAnalyzer = dynamic(() => import('../components/AssetAnalyzer.jsx'), {
   ssr: false,
+  loading: () => <div>Loading...</div>
 })
 
 export default function Home() {
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
+  if (!isMounted) {
+    return <div>Loading...</div>
+  }
+
   return (
     <main className="min-h-screen p-4">
-      <Suspense fallback={<div>Loading...</div>}>
-        <FREDTest />
-      </Suspense>
+      <AssetAnalyzer />
     </main>
   )
 }

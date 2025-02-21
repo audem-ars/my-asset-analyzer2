@@ -1,3 +1,4 @@
+"use client"
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,55 +12,114 @@ const InvestmentAnalysis = ({ symbol, marketData, historicalData }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Function to get the appropriate API URL based on environment
+  const getApiUrl = (symbol) => {
+    if (process.env.NODE_ENV === 'production') {
+      return `/api/test/netlify-fundamentals?symbol=${encodeURIComponent(symbol)}`;
+    }
+    return `/api/test/fundamentals?symbol=${encodeURIComponent(symbol)}`;
+  };
+
   useEffect(() => {
-    if (symbol) {
+    const fetchFinancialData = async () => {
+      if (!symbol) {
+        setError('Please provide a valid symbol');
+        return;
+      }
+
       setLoading(true);
       setError(null);
       
-      fetch(`/api/test/fundamentals?symbol=${symbol}`)
-        .then(res => {
-          if (!res.ok) throw new Error('Failed to fetch data');
-          return res.json();
-        })
-        .then(data => {
-          console.log('Fetched financial data:', data);
-          setFinancialData(data);
-        })
-        .catch(error => {
-          console.error('Error fetching fundamentals:', error);
-          setError('Failed to load financial data. Please try again.');
-        })
-        .finally(() => {
-          setLoading(false);
-        });
+      try {
+        const response = await fetch(getApiUrl(symbol));
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `Failed to fetch data (${response.status}): ${errorText || response.statusText}`
+          );
+        }
+
+        const data = await response.json();
+        
+        if (!data || typeof data !== 'object') {
+          throw new Error('Invalid data format received from API');
+        }
+
+        console.log('Fetched financial data:', data);
+        setFinancialData(data);
+        setError(null);
+      } catch (error) {
+        console.error('Error fetching fundamentals:', error);
+        setError(error.message || 'Failed to load financial data. Please try again.');
+        setFinancialData(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (symbol) {
+      fetchFinancialData();
     }
   }, [symbol]);
 
   const handleSectionClick = (sectionId) => {
     setSelectedSection(sectionId);
+    setError(null);
+
     if (!financialData) {
       setError('Financial data not available');
       return;
     }
 
+    if (!marketData || !historicalData) {
+      setError('Market data or historical data not available');
+      return;
+    }
+
     const section = analysisSections.find(s => s.id === sectionId);
-    if (section) {
-      try {
-        console.log('Financial data structure:', financialData); // Add this debug line
-        const analysisResult = section.analyze({ 
-          marketData, 
-          historicalData, 
-          financialData 
-        });
-        console.log('Analysis result:', analysisResult); // Add this debug line
-        setAnalysis(analysisResult);
-        setError(null);
-      } catch (err) {
-        console.error('Analysis error:', err);
-        setError('Failed to analyze data for this section');
+    if (!section) {
+      setError('Invalid analysis section');
+      return;
+    }
+
+    try {
+      console.log('Analyzing data for section:', sectionId);
+      console.log('Financial data structure:', financialData);
+      
+      const analysisResult = section.analyze({ 
+        marketData, 
+        historicalData, 
+        financialData 
+      });
+
+      if (!analysisResult || typeof analysisResult !== 'object') {
+        throw new Error('Invalid analysis result format');
       }
+
+      console.log('Analysis result:', analysisResult);
+      setAnalysis(analysisResult);
+    } catch (err) {
+      console.error('Analysis error:', err);
+      setError(`Failed to analyze data: ${err.message}`);
+      setAnalysis(null);
     }
   };
+
+  const renderError = (errorMessage) => (
+    <div className="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+      <div className="flex items-center gap-2 text-red-400">
+        <AlertCircle className="h-4 w-4" />
+        <p>{errorMessage}</p>
+      </div>
+    </div>
+  );
+
+  const renderLoadingState = () => (
+    <div className="flex justify-center items-center py-8">
+      <div className="animate-pulse text-white">Loading analysis...</div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -70,14 +130,7 @@ const InvestmentAnalysis = ({ symbol, marketData, historicalData }) => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {error && (
-            <div className="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-              <div className="flex items-center gap-2 text-red-400">
-                <AlertCircle className="h-4 w-4" />
-                <p>{error}</p>
-              </div>
-            </div>
-          )}
+          {error && renderError(error)}
 
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -85,7 +138,7 @@ const InvestmentAnalysis = ({ symbol, marketData, historicalData }) => {
                 <Button
                   key={section.id}
                   onClick={() => handleSectionClick(section.id)}
-                  disabled={loading}
+                  disabled={loading || !financialData}
                   className={`flex items-center justify-between p-4 ${
                     selectedSection === section.id
                       ? 'bg-blue-600/20 border-blue-500/50'
@@ -100,11 +153,7 @@ const InvestmentAnalysis = ({ symbol, marketData, historicalData }) => {
               ))}
             </div>
 
-            {loading && (
-              <div className="flex justify-center items-center py-8">
-                <div className="animate-pulse text-white">Loading analysis...</div>
-              </div>
-            )}
+            {loading && renderLoadingState()}
 
             {analysis && !loading && (
               <div className="mt-8">
