@@ -9,6 +9,9 @@ const nextConfig = {
   images: {
     unoptimized: true
   },
+  experimental: {
+    appDir: true  // Add this for Next.js 13.4.1
+  },
   webpack: (config) => {
     config.resolve = {
       ...config.resolve,
@@ -28,10 +31,5 @@ const nextConfig = {
     return config;
   }
 };
-
-// Add output configuration only in production (Netlify)
-if (process.env.NODE_ENV === 'production') {
-  nextConfig.output = 'standalone';
-}
 
 module.exports = nextConfig;

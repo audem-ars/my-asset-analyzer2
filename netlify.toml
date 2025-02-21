@@ -9,3 +9,7 @@ package = "@netlify/plugin-nextjs"
 NODE_VERSION = "18"
 NEXT_TELEMETRY_DISABLED = "1"
 NODE_ENV = "production"
+NEXT_USE_SERVER_ACTIONS = "true"
+
+[functions]
+node_bundler = "esbuild"
