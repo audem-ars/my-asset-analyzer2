@@ -29,4 +29,9 @@ const nextConfig = {
   }
 };
 
+// Add output configuration only in production (Netlify)
+if (process.env.NODE_ENV === 'production') {
+  nextConfig.output = 'standalone';
+}
+
 module.exports = nextConfig;
