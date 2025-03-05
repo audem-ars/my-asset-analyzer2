@@ -1,12 +1,7 @@
 [build]
-  command = "npm run build"
-  publish = "out"
+  command = "npm run build && cp -r out public"
+  publish = "public"
 
-# Remove the plugins section to be sure
-# [[plugins]]
-#   package = "@netlify/plugin-nextjs"
-
-# These redirects will handle your API routes
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
