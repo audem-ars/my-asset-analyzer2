@@ -1,32 +1,24 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  typescript: {
-    ignoreBuildErrors: true
-  },
-  eslint: {
-    ignoreDuringBuilds: true
-  },
-  images: {
-    unoptimized: true
-  },
-  webpack: (config) => {
-    config.resolve = {
-      ...config.resolve,
-      fallback: {
-        fs: false,
-        net: false,
-        tls: false,
-        "node:buffer": false,
-        "node:util": false,
-        "node:stream": false,
-        "node:events": false
-      },
-      alias: {
-        '@': '.'
-      }
+  reactStrictMode: true,
+  webpack: (config, { isServer }) => {
+    // Fix for yahoo-finance2 package
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '../../tests/http/': false,
     };
+    
     return config;
-  }
+  },
+  // Add this if you're having API route issues
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: '/api/:path*',
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;

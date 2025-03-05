@@ -1,15 +1,13 @@
 [build]
-command = "npm run build"
-publish = ".next"
+  command = "npm run build"
+  publish = ".next"
 
 [[plugins]]
-package = "@netlify/plugin-nextjs"
+  package = "@netlify/plugin-nextjs"
 
-[build.environment]
-NODE_VERSION = "18"
-NEXT_TELEMETRY_DISABLED = "1"
-NODE_ENV = "production"
-NEXT_USE_SERVER_ACTIONS = "true"
-
-[functions]
-node_bundler = "esbuild"
+# These redirects ensure your API routes work correctly
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/nextjs-api/:splat"
+  status = 200
+  force = true
