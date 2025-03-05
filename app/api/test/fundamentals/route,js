@@ -1,0 +1,41 @@
+import { NextResponse } from 'next/server';
+
+// Simplified test route without yahoo-finance2 dependency
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const symbol = searchParams.get('symbol') || 'AAPL';
+
+  try {
+    // Return mock fundamentals data
+    return NextResponse.json({
+      symbol,
+      basicInfo: {
+        name: symbol === 'AAPL' ? 'Apple Inc.' : `${symbol} Corp`,
+        sector: 'Technology',
+        industry: 'Consumer Electronics',
+        employees: 164000
+      },
+      financials: {
+        revenue: 394.33,
+        grossProfit: 170.78,
+        netIncome: 97.18,
+        operatingCashFlow: 109.58,
+        freeCashFlow: 90.16
+      },
+      valuation: {
+        marketCap: 2450000000000,
+        enterpriseValue: 2500000000000,
+        peRatio: 28.5,
+        pegRatio: 2.1,
+        priceToSales: 6.2,
+        priceToBook: 36.1
+      }
+    });
+  } catch (error) {
+    console.error('Error in fundamentals test:', error);
+    return NextResponse.json({
+      error: 'Test failed',
+      details: error.message
+    }, { status: 500 });
+  }
+}

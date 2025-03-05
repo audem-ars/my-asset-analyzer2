@@ -1,0 +1,26 @@
+import { NextResponse } from 'next/server';
+
+// Simple test route without yahoo-finance2 dependency
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const symbol = searchParams.get('symbol') || 'AAPL';
+
+  try {
+    // Return mock data instead of using yahoo-finance2
+    return NextResponse.json({
+      success: true,
+      message: "Test endpoint working",
+      mockData: {
+        symbol,
+        price: 150 + Math.random() * 20,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error in test API:', error);
+    return NextResponse.json({
+      error: 'Test failed',
+      details: error.message
+    }, { status: 500 });
+  }
+}
