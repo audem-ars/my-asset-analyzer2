@@ -9,9 +9,6 @@ const nextConfig = {
   images: {
     unoptimized: true
   },
-  experimental: {
-    appDir: true  // Add this for Next.js 13.4.1
-  },
   webpack: (config) => {
     config.resolve = {
       ...config.resolve,

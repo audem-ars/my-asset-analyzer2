@@ -5,12 +5,50 @@ const calculateMean = (arr) => {
   return arr.reduce((a, b) => a + b, 0) / arr.length;
 };
 
+// Utility function to extract price from data points with different formats
+const extractPrice = (dataPoint) => {
+  // Handle different data formats (string, number, or object with different properties)
+  if (dataPoint === null || dataPoint === undefined) return NaN;
+  
+  // Number format
+  if (typeof dataPoint === 'number') return dataPoint;
+  
+  // String format that can be parsed to a number
+  if (typeof dataPoint === 'string') {
+    const parsed = parseFloat(dataPoint);
+    return isNaN(parsed) ? NaN : parsed;
+  }
+  
+  // Object format - try different property names used across data sources
+  if (typeof dataPoint === 'object') {
+    // First try 'value' which is commonly used
+    if ('value' in dataPoint && dataPoint.value !== null && dataPoint.value !== undefined) {
+      return parseFloat(dataPoint.value);
+    }
+    
+    // Then try 'close' used by many financial APIs
+    if ('close' in dataPoint && dataPoint.close !== null && dataPoint.close !== undefined) {
+      return parseFloat(dataPoint.close);
+    }
+    
+    // Finally try '4. close' used by Alpha Vantage
+    if ('4. close' in dataPoint && dataPoint['4. close'] !== null && dataPoint['4. close'] !== undefined) {
+      return parseFloat(dataPoint['4. close']);
+    }
+  }
+  
+  return NaN;
+};
+
 // Exponential Moving Average (EMA)
 export const calculateEMA = (data, period) => {
-  if (!data || data.length < period) return null;
+  if (!data || !Array.isArray(data) || data.length < period) return null;
   
-  // Extract prices from data (handles both Yahoo Finance and crypto format)
-  const prices = data.map(d => parseFloat(d.value || d.close || d));
+  // Extract prices from data (handles various formats)
+  const prices = data.map(d => extractPrice(d)).filter(p => !isNaN(p));
+  
+  if (prices.length < period) return null;
+  
   const multiplier = 2 / (period + 1);
   
   // First EMA uses SMA as initial value
@@ -25,17 +63,23 @@ export const calculateEMA = (data, period) => {
 
 // Simple Moving Average (SMA)
 export const calculateSMA = (data, period) => {
-  if (!data || data.length < period) return null;
+  if (!data || !Array.isArray(data) || data.length < period) return null;
   
-  const prices = data.map(d => parseFloat(d.value || d.close || d));
+  const prices = data.map(d => extractPrice(d)).filter(p => !isNaN(p));
+  
+  if (prices.length < period) return null;
+  
   return prices.slice(-period).reduce((a, b) => a + b) / period;
 };
 
 // Relative Strength Index (RSI)
 export const calculateRSI = (data, period = 14) => {
-  if (!data || data.length < period + 1) return null;
+  if (!data || !Array.isArray(data) || data.length < period + 1) return null;
 
-  const prices = data.map(d => parseFloat(d.value || d.close || d));
+  const prices = data.map(d => extractPrice(d)).filter(p => !isNaN(p));
+  
+  if (prices.length < period + 1) return null;
+  
   const changes = [];
   
   // Calculate price changes
@@ -59,7 +103,7 @@ export const calculateRSI = (data, period = 14) => {
 
 // Moving Average Convergence Divergence (MACD)
 export const calculateMACD = (data) => {
-  if (!data || data.length < 26) return null;
+  if (!data || !Array.isArray(data) || data.length < 26) return null;
 
   const ema12 = calculateEMA(data, 12);
   const ema26 = calculateEMA(data, 26);
@@ -71,10 +115,15 @@ export const calculateMACD = (data) => {
 
 // Bollinger Bands
 export const calculateBollingerBands = (data, period = 20) => {
-  if (!data || data.length < period) return null;
+  if (!data || !Array.isArray(data) || data.length < period) return null;
 
-  const prices = data.map(d => parseFloat(d.value || d.close || d));
+  const prices = data.map(d => extractPrice(d)).filter(p => !isNaN(p));
+  
+  if (prices.length < period) return null;
+  
   const sma = calculateSMA(data, period);
+  
+  if (sma === null) return null;
 
   // Calculate standard deviation manually
   const mean = calculateMean(prices.slice(-period));
@@ -88,16 +137,45 @@ export const calculateBollingerBands = (data, period = 20) => {
   };
 };
 
+// Extract high, low, close values accounting for different data formats
+const extractHL = (dataPoint, prevClose) => {
+  let high, low, close;
+  
+  if (typeof dataPoint === 'object') {
+    // Try different property names
+    high = dataPoint.high !== undefined ? parseFloat(dataPoint.high) :
+           dataPoint['2. high'] !== undefined ? parseFloat(dataPoint['2. high']) :
+           extractPrice(dataPoint);
+           
+    low = dataPoint.low !== undefined ? parseFloat(dataPoint.low) :
+          dataPoint['3. low'] !== undefined ? parseFloat(dataPoint['3. low']) :
+          extractPrice(dataPoint);
+          
+    close = extractPrice(dataPoint);
+  } else {
+    // If dataPoint is not an object, use the same value for high, low, close
+    high = low = close = extractPrice(dataPoint);
+  }
+  
+  return { high, low, close };
+};
+
 // Average True Range (ATR)
 export const calculateATR = (data, period = 14) => {
-  if (!data || data.length < period) return null;
+  if (!data || !Array.isArray(data) || data.length < period + 1) return null;
 
   const trueRanges = [];
   
-  for (let i = 1; i < data.length; i++) {
-    const high = parseFloat(data[i].high || data[i].value || data[i]);
-    const low = parseFloat(data[i].low || data[i].value || data[i]);
-    const prevClose = parseFloat(data[i-1].close || data[i-1].value || data[i-1]);
+  // Ensure we have valid price data
+  const validData = data.filter(d => extractPrice(d) !== NaN);
+  
+  if (validData.length < period + 1) return null;
+  
+  for (let i = 1; i < validData.length; i++) {
+    const { high, low } = extractHL(validData[i]);
+    const prevClose = extractPrice(validData[i-1]);
+    
+    if (isNaN(high) || isNaN(low) || isNaN(prevClose)) continue;
     
     const tr1 = high - low;
     const tr2 = Math.abs(high - prevClose);
@@ -105,13 +183,45 @@ export const calculateATR = (data, period = 14) => {
     
     trueRanges.push(Math.max(tr1, tr2, tr3));
   }
+  
+  if (trueRanges.length < period) return null;
 
   return calculateMean(trueRanges.slice(-period));
 };
 
+// On-Balance Volume (OBV)
+export const calculateOBV = (data) => {
+  if (!data || !Array.isArray(data) || data.length < 2) return null;
+  
+  let obv = 0;
+  
+  for (let i = 1; i < data.length; i++) {
+    const currentPrice = extractPrice(data[i]);
+    const previousPrice = extractPrice(data[i-1]);
+    
+    // Try to extract volume from different formats
+    let volume = 0;
+    if (typeof data[i] === 'object') {
+      volume = data[i].volume !== undefined ? parseFloat(data[i].volume) :
+               data[i]['5. volume'] !== undefined ? parseFloat(data[i]['5. volume']) : 0;
+    }
+    
+    if (isNaN(currentPrice) || isNaN(previousPrice) || isNaN(volume)) continue;
+    
+    if (currentPrice > previousPrice) {
+      obv += volume;
+    } else if (currentPrice < previousPrice) {
+      obv -= volume;
+    }
+    // If prices are equal, OBV doesn't change
+  }
+  
+  return obv;
+};
+
 // Comprehensive Technical Analysis
 export const calculateTechnicalIndicators = (data) => {
-  if (!data || !data.length) {
+  if (!data || !Array.isArray(data) || data.length === 0) {
     console.warn('No data provided for technical analysis');
     return null;
   }
@@ -120,40 +230,67 @@ export const calculateTechnicalIndicators = (data) => {
   console.log('Calculating technical indicators for data:', {
     length: data.length,
     firstPoint: data[0],
-    lastPoint: data[data.length - 1]
+    lastPoint: data[data.length - 1],
+    sampleValue: extractPrice(data[0])
   });
 
   try {
+    // Check if we have enough data for all calculations
+    if (data.length < 200) {
+      console.warn(`Insufficient data points (${data.length}) for some indicators. Need at least 200 for SMA200.`);
+    }
+    
     const indicators = {
       movingAverages: {
-        sma50: calculateSMA(data, 50)?.toFixed(2),
-        sma200: calculateSMA(data, 200)?.toFixed(2),
-        ema20: calculateEMA(data, 20)?.toFixed(2),
-        dema14: calculateEMA(data, 14)?.toFixed(2),
-        tema14: calculateEMA(data, 14)?.toFixed(2),
-        vwap: null // Implement if volume data is available
+        sma50: data.length >= 50 ? calculateSMA(data, 50) : null,
+        sma200: data.length >= 200 ? calculateSMA(data, 200) : null,
+        ema20: data.length >= 20 ? calculateEMA(data, 20) : null,
+        dema14: data.length >= 28 ? calculateEMA(data, 14) : null, // DEMA needs 2x period
+        tema14: data.length >= 42 ? calculateEMA(data, 14) : null, // TEMA needs 3x period
+        vwap: null // Not calculated without intraday data
       },
       momentum: {
-        rsi: calculateRSI(data)?.toFixed(2),
-        macd: calculateMACD(data)?.toFixed(2),
-        stochK: null, // Implement if needed
-        stochD: null, // Implement if needed
-        cci: null // Implement if needed
+        rsi: calculateRSI(data),
+        macd: calculateMACD(data),
+        stochK: null, // Not calculated in this version
+        stochD: null, // Not calculated in this version
+        cci: null // Not calculated in this version
       },
       volatility: {
-        bollingerUpper: calculateBollingerBands(data)?.upper.toFixed(2),
-        bollingerLower: calculateBollingerBands(data)?.lower.toFixed(2),
-        atr: calculateATR(data)?.toFixed(2),
-        keltnerUpper: null // Implement if needed
+        bollingerUpper: calculateBollingerBands(data)?.upper,
+        bollingerMiddle: calculateBollingerBands(data)?.middle,
+        bollingerLower: calculateBollingerBands(data)?.lower,
+        atr: calculateATR(data),
+        keltnerUpper: null // Not calculated in this version
       },
       volume: {
-        obv: null, // Implement if volume data is available
-        chaikinOsc: null // Implement if needed
+        obv: calculateOBV(data),
+        chaikinOsc: null // Not calculated in this version
       }
     };
 
-    console.log('Technical indicators calculated:', indicators);
-    return indicators;
+    // Format the results to two decimal places where applicable
+    const formatIndicators = (obj) => {
+      if (!obj) return obj;
+      
+      const result = {};
+      for (const key in obj) {
+        if (obj[key] === null || obj[key] === undefined) {
+          result[key] = null;
+        } else if (typeof obj[key] === 'number') {
+          result[key] = parseFloat(obj[key].toFixed(2));
+        } else if (typeof obj[key] === 'object') {
+          result[key] = formatIndicators(obj[key]);
+        } else {
+          result[key] = obj[key];
+        }
+      }
+      return result;
+    };
+
+    const formattedIndicators = formatIndicators(indicators);
+    console.log('Technical indicators calculated:', formattedIndicators);
+    return formattedIndicators;
   } catch (error) {
     console.error('Error calculating technical indicators:', error);
     return null;
