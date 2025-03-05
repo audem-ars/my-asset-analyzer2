@@ -1,8 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  trailingSlash: true,
+  // This tells Next.js to export the app as static HTML/CSS/JS
+  output: 'export',
+  // Images need to be unoptimized for static export
+  images: {
+    unoptimized: true,
+  },
+  // Fix for yahoo-finance2 package
   webpack: (config, { isServer }) => {
-    // Fix for yahoo-finance2 package
     config.resolve.alias = {
       ...config.resolve.alias,
       '../../tests/http/': false,
@@ -10,20 +17,14 @@ const nextConfig = {
     
     return config;
   },
-  // Add this if you're having API route issues
+  // This ensures our API routes work through Netlify Functions
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: '/api/:path*',
+        destination: '/.netlify/functions/:path*',
       },
     ];
-  },
-  // Tell Next.js to exclude API routes from static export
-  output: 'standalone',
-  experimental: {
-    // Explicitly enable App Router API routes
-    appDir: true
   }
 };
 
