@@ -1079,4 +1079,4 @@ export const ensureCorrectDateRange = (data, timeframeInDays) => {
 };
 
 // Export all needed functions
-export { detectChartPatterns, ensureCorrectDateRange, getTrendLineValueAtIndex };
+export { getTrendLineValueAtIndex };
