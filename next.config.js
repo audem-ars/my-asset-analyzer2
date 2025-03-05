@@ -16,16 +16,8 @@ const nextConfig = {
     };
     
     return config;
-  },
-  // This ensures our API routes work through Netlify Functions
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: '/.netlify/functions/:path*',
-      },
-    ];
   }
+  // Remove the rewrites section, it's not compatible with static export
 };
 
 module.exports = nextConfig;
