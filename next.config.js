@@ -19,6 +19,12 @@ const nextConfig = {
       },
     ];
   },
+  // Tell Next.js to exclude API routes from static export
+  output: 'standalone',
+  experimental: {
+    // Explicitly enable App Router API routes
+    appDir: true
+  }
 };
 
 module.exports = nextConfig;
