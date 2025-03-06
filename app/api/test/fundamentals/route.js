@@ -5,6 +5,14 @@ const yahooFinance = require('yahoo-finance2').default;
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+const options = {
+  queue: {
+    timeout: 30000,  // 30 seconds
+    retries: 3,      // Retry 3 times
+    retryBackoff: 1000,  // Start with 1 second delay
+  }
+};
+
 export async function GET(request) {
  const { searchParams } = new URL(request.url);
  const symbol = searchParams.get('symbol');
@@ -14,17 +22,19 @@ export async function GET(request) {
  }
 
  try {
-   const [quote, quoteSummary, historical] = await Promise.all([
-     yahooFinance.quote(symbol),
-     yahooFinance.quoteSummary(symbol, {
-       modules: ['financialData', 'incomeStatementHistory', 'defaultKeyStatistics']
-     }),
-     yahooFinance.historical(symbol, {
-       period1: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
-       period2: new Date(),
-       interval: '1d'
-     })
-   ]);
+  const [quote, quoteSummary, historical] = await Promise.all([
+    yahooFinance.quote(symbol, options),
+    yahooFinance.quoteSummary(symbol, {
+      modules: ['financialData', 'incomeStatementHistory', 'defaultKeyStatistics'],
+      ...options
+    }),
+    yahooFinance.historical(symbol, {
+      period1: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
+      period2: new Date(),
+      interval: '1d',
+      ...options
+    })
+  ]);
    console.log("QUOTE SUMMARY DATA:", {
      financialData: quoteSummary.financialData,
      incomeStatementDetail: quoteSummary.incomeStatementHistory.incomeStatementHistory.map(statement => ({

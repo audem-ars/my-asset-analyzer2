@@ -1,4 +1,5 @@
 // stockUtils.js
+// Make sure to keep this export at the TOP of the file
 export const stockSymbols = [
   // Original top stocks
   'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'BRK.B', 'LLY', 'V', 'TSM',
@@ -32,6 +33,46 @@ export const stockSymbols = [
   // REITs and real estate
   'PLD', 'AMT', 'CCI', 'EQIX', 'PSA', 'O', 'WELL', 'SPG', 'AVB', 'EQR'
 ];
+
+export async function fetchMultiTimeframeData(symbol) {
+  if (!symbol) {
+    throw new Error('Symbol is required for fetching multi-timeframe data');
+  }
+
+  try {
+    const baseURL = window.location.origin;
+    
+    // Fetch daily data
+    const dailyResponse = await fetch(`${baseURL}/api/stocks?symbol=${symbol}&type=historical&range=200&interval=1d`);
+    if (!dailyResponse.ok) {
+      throw new Error(`Failed to fetch daily data: ${dailyResponse.statusText}`);
+    }
+    const dailyData = await dailyResponse.json();
+    
+    // Fetch hourly data for recent periods (last 7 days)
+    const hourlyResponse = await fetch(`${baseURL}/api/stocks?symbol=${symbol}&type=historical&range=7&interval=1h`);
+    if (!hourlyResponse.ok) {
+      throw new Error(`Failed to fetch hourly data: ${hourlyResponse.statusText}`);
+    }
+    const hourlyData = await hourlyResponse.json();
+    
+    // Format all the data consistently
+    const daily = formatStockHistoricalData(dailyData);
+    const hourly = formatStockHistoricalData(hourlyData);
+    
+    // Create 4h data by sampling hourly data
+    const fourHour = hourly.filter((_, i) => i % 4 === 0);
+
+    return {
+      daily,
+      fourHour,
+      hourly
+    };
+  } catch (error) {
+    console.error('Error fetching multi-timeframe data:', error);
+    throw error;
+  }
+}
 
 // Trend Indicators
 export const trendIndicators = {
@@ -455,7 +496,7 @@ export function calculateTechnicalIndicators(priceData) {
   if (!priceData || priceData.length === 0) {
     console.log('No price data received');
     return {
-      trend: {
+      movingAverages: {
         sma50: 0,
         sma200: 0,
         ema20: 0,
@@ -526,9 +567,6 @@ export function calculateTechnicalIndicators(priceData) {
   const accDist = volumeIndicators.calculateAccumulationDistribution(priceData);
   const volumeRoc = volumeIndicators.calculateVolumeROC(priceData);
 
-  // Calculate all indicators as before
-  // ...all calculation code remains the same...
-
   return {
     movingAverages: {
       sma50,
@@ -572,137 +610,85 @@ export function calculateTechnicalIndicators(priceData) {
   };
 }
 
-const FETCH_TIMEOUT = 10000; // 10 seconds
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
-
-async function wait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function checkAPIHealth() {
-  try {
-    const response = await fetch('/api/health');
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function fetchStockData(symbol) {
-  let lastError = null;
+// Improved error handling with retries
+async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+  let retries = 0;
   
-  // First check if API is available
-  const isAPIHealthy = await checkAPIHealth();
-  if (!isAPIHealthy) {
-    throw new Error('Stock service is temporarily unavailable. Please try again later.');
-  }
-  
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  while (retries < maxRetries) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-      
-      // Use more reliable endpoint structure
-      const baseURL = process.env.NODE_ENV === 'development' 
-        ? 'http://localhost:3000'
-        : window.location.origin;
-        
-      const url = new URL(`${baseURL}/api/test/simple`);
-      url.searchParams.append('symbol', symbol);
-      
       const response = await fetch(url, {
-        signal: controller.signal,
+        ...options,
         headers: {
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
+          'Pragma': 'no-cache',
+          ...(options.headers || {})
         }
       });
-      
-      clearTimeout(timeoutId);
-
-      // Handle specific HTTP status codes
-      if (response.status === 404) {
-        throw new Error(`Stock symbol '${symbol}' not found`);
-      }
-      
-      if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Please try again in a few minutes.');
-      }
       
       if (!response.ok) {
-        // Try to get error details from response
-        let errorMessage;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error;
-        } catch {
-          errorMessage = `Server error (${response.status}): ${response.statusText}`;
+        // Handle specific status codes
+        if (response.status === 404) {
+          throw new Error(`Symbol not found (404)`);
         }
-        throw new Error(errorMessage);
-      }
-
-      let data;
-      try {
-        data = await response.json();
-      } catch (e) {
-        throw new Error('Invalid response format from server');
-      }
-      
-      // Validate response data structure
-      if (!data || typeof data !== 'object') {
-        throw new Error('Invalid response format');
+        
+        if (response.status === 429) {
+          console.warn(`Rate limit exceeded, retrying in ${(retries + 1) * 1000}ms...`);
+          await new Promise(resolve => setTimeout(resolve, (retries + 1) * 1000));
+          retries++;
+          continue;
+        }
+        
+        const errorText = await response.text();
+        throw new Error(`HTTP error ${response.status}: ${errorText}`);
       }
       
-      // Handle both success/error response formats
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      
-      if (!data.symbol || data.price === undefined) {
-        throw new Error('Missing required data fields');
-      }
-      
-      // Return normalized data
-      return {
-        symbol: data.symbol.toUpperCase(),
-        price: Number(data.price),
-        name: data.name || symbol,
-        lastUpdated: new Date().toISOString()
-      };
-      
+      return response;
     } catch (error) {
-      lastError = error;
-      
-      console.error('Stock fetch error:', {
-        attempt,
-        symbol,
-        message: error.message,
-        name: error.name,
-        status: error.status,
-        stack: error.stack
-      });
-      
-      // Don't retry on certain errors
-      if (
-        error.name === 'AbortError' || 
-        error.message.includes('not found') ||
-        error.message.includes('Rate limit exceeded') ||
-        attempt === MAX_RETRIES
-      ) {
-        break;
+      if (error.message.includes('Rate limit') && retries < maxRetries - 1) {
+        console.warn(`Rate limit error, retrying in ${(retries + 1) * 1000}ms...`);
+        await new Promise(resolve => setTimeout(resolve, (retries + 1) * 1000));
+        retries++;
+      } else {
+        throw error;
       }
-      
-      await wait(RETRY_DELAY * attempt);
     }
   }
   
-  // Enhance error message on final failure
-  const errorMessage = lastError.message.includes('fetch') 
-    ? 'Unable to connect to stock service. Please check your network connection.'
-    : lastError.message;
+  throw new Error(`Maximum retries (${maxRetries}) exceeded`);
+}
+
+export async function fetchStockData(symbol) {
+  if (!symbol) {
+    throw new Error('Symbol is required');
+  }
   
-  throw new Error(errorMessage);
+  console.log(`Fetching stock data for ${symbol}`);
+  
+  try {
+    const baseURL = window.location.origin;
+    const url = new URL(`${baseURL}/api/stocks`);
+    url.searchParams.append('symbol', symbol);
+    url.searchParams.append('type', 'quote');
+    
+    const response = await fetchWithRetry(url);
+    const data = await response.json();
+    
+    console.log(`Successfully fetched stock data for ${symbol}:`, data);
+    
+    // Return normalized data
+    return {
+      symbol: symbol.toUpperCase(),
+      price: data.price,
+      change: data.change,
+      changePercent: data.changePercent,
+      name: data.longName || symbol,
+      overview: data.overview,
+      lastUpdated: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error(`Error fetching stock data for ${symbol}:`, error);
+    throw error;
+  }
 }
 
 export async function handleStockFetch(symbol, timeRange, handlers) {
@@ -713,47 +699,181 @@ export async function handleStockFetch(symbol, timeRange, handlers) {
     return;
   }
   
+  console.log(`Handling stock fetch for ${symbol} with timeRange ${timeRange}`);
+  
   try {
     setLoading(true);
     setError('');
     
-    // Fetch current stock data with fallback mock data for development
-    let data;
-    try {
-      data = await fetchStockData(symbol);
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Using mock data in development mode due to fetch error:', error.message);
-        data = {
-          symbol: symbol.toUpperCase(),
-          price: 100 + Math.random() * 100,
-          name: `Mock ${symbol.toUpperCase()}`,
-          lastUpdated: new Date().toISOString()
-        };
-      } else {
-        throw error;
-      }
-    }
-    
+    // Fetch current stock data
+    const data = await fetchStockData(symbol);
     setAssetData(data);
     
-    // Generate historical data with more realistic variations
-    const basePrice = data.price;
-    const volatility = 0.02; // 2% daily volatility
-    const trend = 0.001; // 0.1% daily trend
+    // Fetch historical data
+    const baseURL = window.location.origin;
+    const historyUrl = new URL(`${baseURL}/api/stocks`);
+    historyUrl.searchParams.append('symbol', symbol);
+    historyUrl.searchParams.append('type', 'historical');
+    historyUrl.searchParams.append('range', timeRange);
     
-    const mockHistoricalData = Array.from({ length: 30 }, (_, i) => {
-      const trendEffect = basePrice * (1 + trend * (i - 15));
-      const randomEffect = trendEffect * (1 + (Math.random() - 0.5) * volatility);
-      
-      return {
-        date: new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000).toISOString(),
-        value: randomEffect,
-        volume: Math.floor(500000 + Math.random() * 1000000)
-      };
+    console.log(`Fetching historical data from: ${historyUrl.toString()}`);
+    
+    const historyResponse = await fetchWithRetry(historyUrl);
+    const historicalData = await historyResponse.json();
+    
+    console.log(`Received historical data for ${symbol}, processing...`);
+    
+    // Format the data for our charts
+    const formattedData = formatStockHistoricalData(historicalData);
+    const technicalData = calculateTechnicalIndicators(formattedData);
+    
+    console.log(`Historical data processed, items: ${formattedData.length}`);
+    
+    // Generate technical analysis
+    const analysis = generateTechnicalAnalysis(technicalData);
+    
+    setHistoricalData({
+      prices: formattedData,
+      technical: technicalData,
+      analysis: analysis
     });
     
-    const formattedData = formatStockHistoricalData(mockHistoricalData);
+  } catch (error) {
+    console.error('Error in handleStockFetch:', error);
+    
+    // Provide more user-friendly error messages
+    if (error.message.includes('Symbol not found')) {
+      setError(`Symbol '${symbol}' not found. Please check the symbol and try again.`);
+    } else if (error.message.includes('Rate limit')) {
+      setError(`Rate limit exceeded. Please wait a moment and try again.`);
+    } else if (error.message.includes('Network Error') || error.message.includes('Failed to fetch')) {
+      setError(`Network error. Please check your connection and try again.`);
+    } else {
+      setError(`Error: ${error.message}`);
+    }
+  } finally {
+    setLoading(false);
+  }
+}
+
+// Function to generate analysis based on technical indicators
+export function generateTechnicalAnalysis(technicalData) {
+  if (!technicalData) return null;
+  
+  const { movingAverages, momentum, volatility } = technicalData;
+  
+  // Check for potential trend signals
+  let trendSignal = 'neutral';
+  let trendStrength = 'weak';
+  let supportLevel = 0;
+  let resistanceLevel = 0;
+  
+  // Determine trend based on moving averages
+  if (movingAverages.sma50 > movingAverages.sma200) {
+    // Bullish - price above long-term average
+    trendSignal = 'bullish';
+    
+    // Check for golden cross (short-term MA crossing above long-term MA)
+    const goldCrossPotential = movingAverages.ema20 > movingAverages.sma50 && 
+                               movingAverages.sma50 > movingAverages.sma200;
+    
+    if (goldCrossPotential) {
+      trendStrength = 'strong';
+    }
+    
+    // Set support at SMA50 and resistance at recent high
+    supportLevel = movingAverages.sma50;
+    resistanceLevel = volatility.bollingerUpper;
+    
+  } else if (movingAverages.sma50 < movingAverages.sma200) {
+    // Bearish - price below long-term average
+    trendSignal = 'bearish';
+    
+    // Check for death cross (short-term MA crossing below long-term MA)
+    const deathCrossPotential = movingAverages.ema20 < movingAverages.sma50 && 
+                                movingAverages.sma50 < movingAverages.sma200;
+    
+    if (deathCrossPotential) {
+      trendStrength = 'strong';
+    }
+    
+    // Set resistance at SMA50 and support at recent low
+    resistanceLevel = movingAverages.sma50;
+    supportLevel = volatility.bollingerLower;
+  }
+  
+  // Refine signals with momentum indicators
+  let momentumSignal = 'neutral';
+  
+  // RSI analysis
+  if (momentum.rsi > 70) {
+    momentumSignal = 'overbought';
+  } else if (momentum.rsi < 30) {
+    momentumSignal = 'oversold';
+  }
+  
+  // MACD analysis
+  const macdSignal = momentum.macd > momentum.macdSignal ? 'bullish' : 'bearish';
+  
+  // Combine signals
+  let overallSignal = trendSignal;
+  if (trendSignal === 'bullish' && momentumSignal === 'overbought') {
+    overallSignal = 'cautious bullish';
+  } else if (trendSignal === 'bearish' && momentumSignal === 'oversold') {
+    overallSignal = 'cautious bearish';
+  }
+  
+  // Volatility assessment
+  const volatilityLevel = volatility.atr > 2 ? 'high' : 'moderate';
+  
+  return {
+    trend: {
+      signal: trendSignal,
+      strength: trendStrength,
+      supportLevel: supportLevel.toFixed(2),
+      resistanceLevel: resistanceLevel.toFixed(2)
+    },
+    momentum: {
+      signal: momentumSignal,
+      rsiValue: momentum.rsi.toFixed(2),
+      macdSignal
+    },
+    volatility: {
+      level: volatilityLevel,
+      bollingerWidth: (volatility.bollingerUpper - volatility.bollingerLower).toFixed(2)
+    },
+    overall: {
+      signal: overallSignal,
+      summary: `The asset shows a ${trendStrength} ${trendSignal} trend with ${momentumSignal} momentum and ${volatilityLevel} volatility.`
+    }
+  };
+}
+
+export async function handlePatternFetch(symbol, handlers) {
+  const { setLoading, setError, setHistoricalData } = handlers;
+  
+  if (!symbol) {
+    setError('Symbol is required');
+    return;
+  }
+  
+  try {
+    setLoading(true);
+    setError('');
+    
+    console.log(`Fetching 200-day data for symbol: ${symbol}`);
+    
+    const baseURL = window.location.origin;
+    const url = new URL(`${baseURL}/api/stocks`);
+    url.searchParams.append('symbol', symbol);
+    url.searchParams.append('type', 'historical');
+    url.searchParams.append('range', '200');
+    
+    const response = await fetchWithRetry(url);
+    const historicalData = await response.json();
+    
+    // Format the data for our charts
+    const formattedData = formatStockHistoricalData(historicalData);
     const technicalData = calculateTechnicalIndicators(formattedData);
     
     setHistoricalData({
@@ -762,21 +882,88 @@ export async function handleStockFetch(symbol, timeRange, handlers) {
     });
     
   } catch (error) {
-    console.error('Error in handleStockFetch:', {
-      message: error.message,
-      symbol,
-      timeRange,
-      stack: error.stack
+    console.error('Error in handlePatternFetch:', error);
+    setError(error.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+export async function handleShortPatternFetch(symbol, handlers) {
+  const { setLoading, setError, setHistoricalData } = handlers;
+  
+  if (!symbol) {
+    setError('Symbol is required');
+    return;
+  }
+  
+  try {
+    setLoading(true);
+    setError('');
+    
+    console.log(`Fetching 40-day data for symbol: ${symbol}`);
+    
+    const baseURL = window.location.origin;
+    const url = new URL(`${baseURL}/api/stocks`);
+    url.searchParams.append('symbol', symbol);
+    url.searchParams.append('type', 'historical');
+    url.searchParams.append('range', '40');
+    
+    const response = await fetchWithRetry(url);
+    const historicalData = await response.json();
+    
+    // Format the data for our charts
+    const formattedData = formatStockHistoricalData(historicalData);
+    const technicalData = calculateTechnicalIndicators(formattedData);
+    
+    setHistoricalData({
+      prices: formattedData,
+      technical: technicalData
     });
     
-    // Provide user-friendly error messages
-    const errorMessage = 
-      error.name === 'AbortError' ? 'Request timed out. Please try again.' :
-      error.message.includes('network') ? 'Network error. Please check your connection.' :
-      error.message;
+  } catch (error) {
+    console.error('Error in handleShortPatternFetch:', error);
+    setError(error.message);
+  } finally {
+    setLoading(false);
+  }
+}
+
+export async function handleVeryShortPatternFetch(symbol, handlers) {
+  const { setLoading, setError, setHistoricalData } = handlers;
+  
+  if (!symbol) {
+    setError('Symbol is required');
+    return;
+  }
+  
+  try {
+    setLoading(true);
+    setError('');
     
-    setError(errorMessage);
+    console.log(`Fetching 10-day data for symbol: ${symbol}`);
     
+    const baseURL = window.location.origin;
+    const url = new URL(`${baseURL}/api/stocks`);
+    url.searchParams.append('symbol', symbol);
+    url.searchParams.append('type', 'historical');
+    url.searchParams.append('range', '10');
+    
+    const response = await fetchWithRetry(url);
+    const historicalData = await response.json();
+    
+    // Format the data for our charts
+    const formattedData = formatStockHistoricalData(historicalData);
+    const technicalData = calculateTechnicalIndicators(formattedData);
+    
+    setHistoricalData({
+      prices: formattedData,
+      technical: technicalData
+    });
+    
+  } catch (error) {
+    console.error('Error in handleVeryShortPatternFetch:', error);
+    setError(error.message);
   } finally {
     setLoading(false);
   }

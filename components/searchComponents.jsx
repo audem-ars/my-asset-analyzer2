@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { cryptoMap } from './cryptoMap';
 import { stockSymbols } from './stockUtils';
@@ -11,8 +11,10 @@ export const BondSearch = ({
   setAssetData, 
   handleBondFetch 
 }) => {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
   return (
-    <div className="relative isolate" style={{ zIndex: 50 }}>
+    <div className="relative">
       <div className="w-full space-y-2">
         <select
           value={selectedBondCategory}
@@ -34,61 +36,63 @@ export const BondSearch = ({
           onChange={(e) => {
             const value = e.target.value.toUpperCase();
             setAssetData(prev => ({ ...prev, symbol: value }));
-            
-            if (value.length > 0) {
-              document.getElementById('bond-list').style.display = 'block';
-            } else {
-              document.getElementById('bond-list').style.display = 'none';
-            }
+            setIsDropdownOpen(value.length > 0);
           }}
           className="w-full rounded-xl bg-[#1a1f2d] border-blue-500/30 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
         />
       </div>
-      <div 
-        id="bond-list"
-        className="absolute w-full bg-[#1a1f2d] border border-blue-500/30 rounded-xl shadow-lg hidden max-h-60 overflow-auto"
-        style={{
-          top: '100%',
-          left: 0,
-          marginTop: '4px',
-          zIndex: 100
-        }}
-      >
-        {Object.entries(bondCategories)
-          .filter(([category]) => !selectedBondCategory || category === selectedBondCategory)
-          .map(([category, data]) => (
-            <div key={category}>
-              <div className="px-4 py-2 bg-[#232936] font-semibold text-white">
-                {data.name}
-                <span className="text-sm text-white/60 ml-2">
-                  {data.description}
-                </span>
-              </div>
-              {Object.entries(data.symbols)
-                .filter(([symbol, name]) => 
-                  !assetData.symbol ||
-                  symbol.includes(assetData.symbol) || 
-                  name.toLowerCase().includes(assetData.symbol.toLowerCase())
-                )
-                .map(([symbol, name]) => (
-                  <div
-                    key={symbol}
-                    className="px-4 py-2 hover:bg-blue-500/20 cursor-pointer text-white"
-                    onClick={() => {
-                      setAssetData(prev => ({ ...prev, symbol }));
-                      document.getElementById('bond-list').style.display = 'none';
-                      handleBondFetch(symbol);
-                    }}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium text-white">{symbol}</span>
-                      <span className="text-white/60 text-sm">{name}</span>
-                    </div>
+
+      {isDropdownOpen && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-lg"
+            style={{ zIndex: 9998 }}
+            onClick={() => setIsDropdownOpen(false)}
+          />
+          <div 
+            className="fixed left-1/2 top-1/4 -translate-x-1/2 w-[500px] bg-[#1a1f2d] border border-blue-500/30 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.8)] overflow-auto"
+            style={{ 
+              zIndex: 9999,
+              maxHeight: '60vh'
+            }}
+          >
+            {Object.entries(bondCategories)
+              .filter(([category]) => !selectedBondCategory || category === selectedBondCategory)
+              .map(([category, data]) => (
+                <div key={category}>
+                  <div className="px-4 py-3 bg-[#232936] font-semibold text-white">
+                    {data.name}
+                    <span className="text-sm text-white/60 ml-2">
+                      {data.description}
+                    </span>
                   </div>
-                ))}
-            </div>
-          ))}
-      </div>
+                  {Object.entries(data.symbols)
+                    .filter(([symbol, name]) => 
+                      !assetData.symbol ||
+                      symbol.includes(assetData.symbol) || 
+                      name.toLowerCase().includes(assetData.symbol.toLowerCase())
+                    )
+                    .map(([symbol, name]) => (
+                      <div
+                        key={symbol}
+                        className="px-4 py-3 hover:bg-blue-500/30 transition-all duration-200 cursor-pointer text-white group"
+                        onClick={() => {
+                          setAssetData(prev => ({ ...prev, symbol }));
+                          setIsDropdownOpen(false);
+                          handleBondFetch(symbol);
+                        }}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium text-white group-hover:text-white/90">{symbol}</span>
+                          <span className="text-white/60 text-sm group-hover:text-white/80">{name}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -102,8 +106,10 @@ export const StockSearch = ({
     setError, 
     setHistoricalData 
 }) => {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
   return (
-    <div className="relative isolate" style={{ zIndex: 50 }}>
+    <div className="relative">
       <div className="w-full">
         <Input
           type="text"
@@ -112,54 +118,58 @@ export const StockSearch = ({
           onChange={(e) => {
             const value = e.target.value.toUpperCase();
             setAssetData(prev => ({ ...prev, symbol: value }));
-            
-            if (value.length > 0) {
-              document.getElementById('stock-list').style.display = 'block';
-            } else {
-              document.getElementById('stock-list').style.display = 'none';
-            }
+            setIsDropdownOpen(value.length > 0);
           }}
           className="w-full rounded-xl bg-[#1a1f2d] border-blue-500/30 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
         />
       </div>
-      <div 
-        id="stock-list"
-        className="absolute w-full bg-[#1a1f2d] border border-blue-500/30 rounded-xl shadow-lg hidden max-h-60 overflow-auto"
-        style={{
-          top: '100%',
-          left: 0,
-          marginTop: '4px',
-          zIndex: 100
-        }}
-      >
-        {stockSymbols
-          .filter(symbol => symbol.includes(assetData.symbol))
-          .map(symbol => (
-            <div
-              key={symbol}
-              className="px-4 py-2 hover:bg-blue-500/20 cursor-pointer text-white"
-              onClick={() => {
-                setAssetData(prev => ({ ...prev, symbol }));
-                document.getElementById('stock-list').style.display = 'none';
-                handleStockFetch(symbol, timeRange, {
-                  setLoading,
-                  setError,
-                  setAssetData,
-                  setHistoricalData
-                });
-              }}
-            >
-              <span className="font-medium text-white">{symbol}</span>
-            </div>
-          ))}
-      </div>
+
+      {isDropdownOpen && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-lg"
+            style={{ zIndex: 9998 }}
+            onClick={() => setIsDropdownOpen(false)}
+          />
+          <div 
+            className="fixed left-1/2 top-1/4 -translate-x-1/2 w-[500px] bg-[#1a1f2d] border border-blue-500/30 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.8)] overflow-auto"
+            style={{ 
+              zIndex: 9999,
+              maxHeight: '60vh'
+            }}
+          >
+            {stockSymbols
+              .filter(symbol => symbol.includes(assetData.symbol))
+              .map(symbol => (
+                <div
+                  key={symbol}
+                  className="px-4 py-3 hover:bg-blue-500/30 transition-all duration-200 cursor-pointer text-white group"
+                  onClick={() => {
+                    setAssetData(prev => ({ ...prev, symbol }));
+                    setIsDropdownOpen(false);
+                    handleStockFetch(symbol, timeRange, {
+                      setLoading,
+                      setError,
+                      setAssetData,
+                      setHistoricalData
+                    });
+                  }}
+                >
+                  <span className="font-medium text-white group-hover:text-white/90">{symbol}</span>
+                </div>
+              ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };
 
 export const CryptoSearch = ({ assetData, setAssetData, fetchCryptoData }) => {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
   return (
-    <div className="relative isolate" style={{ zIndex: 50 }}>
+    <div className="relative">
       <div className="w-full">
         <Input
           type="text"
@@ -168,48 +178,52 @@ export const CryptoSearch = ({ assetData, setAssetData, fetchCryptoData }) => {
           onChange={(e) => {
             const value = e.target.value.toUpperCase();
             setAssetData(prev => ({ ...prev, symbol: value }));
-            
-            if (value.length > 0) {
-              document.getElementById('crypto-list').style.display = 'block';
-            } else {
-              document.getElementById('crypto-list').style.display = 'none';
-            }
+            setIsDropdownOpen(value.length > 0);
           }}
           className="w-full rounded-xl bg-[#1a1f2d] border-blue-500/30 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50"
         />
       </div>
-      <div 
-        id="crypto-list"
-        className="absolute w-full bg-[#1a1f2d] border border-blue-500/30 rounded-xl shadow-lg hidden max-h-60 overflow-auto"
-        style={{
-          top: '100%',
-          left: 0,
-          marginTop: '4px',
-          zIndex: 100
-        }}
-      >
-        {Object.entries(cryptoMap)
-          .filter(([symbol, name]) => 
-            symbol.includes(assetData.symbol) || 
-            name.toLowerCase().includes(assetData.symbol.toLowerCase())
-          )
-          .map(([symbol, name]) => (
-            <div
-              key={symbol}
-              className="px-4 py-2 hover:bg-blue-500/20 cursor-pointer text-white flex justify-between items-center"
-              onClick={() => {
-                setAssetData(prev => ({ ...prev, symbol }));
-                document.getElementById('crypto-list').style.display = 'none';
-                fetchCryptoData(symbol);
-              }}
-            >
-              <span className="font-medium text-white">{symbol}</span>
-              <span className="text-white/60">
-                {name.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-              </span>
-            </div>
-          ))}
-      </div>
+
+      {isDropdownOpen && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-lg"
+            style={{ zIndex: 9998 }}
+            onClick={() => setIsDropdownOpen(false)}
+          />
+          <div 
+            className="fixed left-1/2 top-1/4 -translate-x-1/2 w-[500px] bg-[#1a1f2d] border border-blue-500/30 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.8)] overflow-auto"
+            style={{ 
+              zIndex: 9999,
+              maxHeight: '60vh'
+            }}
+          >
+            {Object.entries(cryptoMap)
+              .filter(([symbol, name]) => 
+                symbol.includes(assetData.symbol) || 
+                name.toLowerCase().includes(assetData.symbol.toLowerCase())
+              )
+              .map(([symbol, name]) => (
+                <div
+                  key={symbol}
+                  className="px-4 py-3 hover:bg-blue-500/30 transition-all duration-200 cursor-pointer text-white group"
+                  onClick={() => {
+                    setAssetData(prev => ({ ...prev, symbol }));
+                    setIsDropdownOpen(false);
+                    fetchCryptoData(symbol);
+                  }}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium text-white group-hover:text-white/90">{symbol}</span>
+                    <span className="text-white/60 group-hover:text-white/80">
+                      {name.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -1,195 +1,225 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ReferenceArea } from 'recharts';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { handlePatternFetch, handleShortPatternFetch, handleVeryShortPatternFetch } from './stockUtils';
 
-const HeadAndShouldersDetector = ({ data }) => {
-  const [pattern, setPattern] = useState(null);
-  const [neckline, setNeckline] = useState(null);
+const HeadAndShouldersDetector = ({ symbol }) => {
+  const [longTermData, setLongTermData] = useState(null);
+  const [shortTermData, setShortTermData] = useState(null);
+  const [veryShortTermData, setVeryShortTermData] = useState(null);
+  const [isLoading, setIsLoading] = useState({
+    long: true,
+    short: true,
+    veryShort: true
+  });
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    detectPattern(data);
-  }, [data]);
+    if (!symbol) {
+      setError('No symbol selected. Please select a stock symbol from the main view.');
+      setIsLoading({
+        long: false,
+        short: false,
+        veryShort: false
+      });
+      return;
+    }
 
-  const detectPattern = (priceData) => {
-    if (!priceData || priceData.length < 20) return;
+    // Reset state when symbol changes
+    setLongTermData(null);
+    setShortTermData(null);
+    setVeryShortTermData(null);
+    setIsLoading({
+      long: true,
+      short: true,
+      veryShort: true
+    });
 
-    // Find local maxima and minima
-    const peaks = findPeaksAndTroughs(priceData);
+    console.log(`HeadAndShouldersDetector: Loading data for symbol ${symbol}`);
+    setError('');
+    
+    // Fetch 200-day data
+    handlePatternFetch(symbol, {
+      setLoading: (state) => setIsLoading(prev => ({ ...prev, long: state })),
+      setError,
+      setHistoricalData: setLongTermData
+    });
+
+    // Fetch 40-day data
+    handleShortPatternFetch(symbol, {
+      setLoading: (state) => setIsLoading(prev => ({ ...prev, short: state })),
+      setError,
+      setHistoricalData: setShortTermData
+    });
+    
+    // Fetch 10-day data
+    handleVeryShortPatternFetch(symbol, {
+      setLoading: (state) => setIsLoading(prev => ({ ...prev, veryShort: state })),
+      setError,
+      setHistoricalData: setVeryShortTermData
+    });
+  }, [symbol]); // Re-run this effect when symbol changes
+
+  const detectPatterns = (data) => {
+    if (!data || !Array.isArray(data.prices) || data.prices.length < 5) return [];
+    
+    const patterns = [];
+    const prices = data.prices.map(d => d.value);
+    
+    // Find local maxima
+    const peaks = [];
+    for (let i = 2; i < prices.length - 2; i++) {
+      if (prices[i] > prices[i-1] && 
+          prices[i] > prices[i-2] &&
+          prices[i] > prices[i+1] &&
+          prices[i] > prices[i+2]) {
+        peaks.push({ 
+          price: prices[i], 
+          index: i,
+          date: data.prices[i].date
+        });
+      }
+    }
     
     // Look for head and shoulders pattern
-    for (let i = 0; i < peaks.length - 4; i++) {
-      const potentialLeftShoulder = peaks[i];
-      const potentialHead = peaks[i + 1];
-      const potentialRightShoulder = peaks[i + 2];
+    for (let i = 0; i < peaks.length - 2; i++) {
+      const leftShoulder = peaks[i];
+      const head = peaks[i + 1];
+      const rightShoulder = peaks[i + 2];
       
-      // Check if we have a valid formation
-      if (isValidHeadAndShoulders(
-        potentialLeftShoulder,
-        potentialHead,
-        potentialRightShoulder,
-        priceData
-      )) {
-        // Calculate neckline
-        const necklineStart = findNecklinePoint(potentialLeftShoulder, priceData);
-        const necklineEnd = findNecklinePoint(potentialRightShoulder, priceData);
-        
-        setPattern({
-          leftShoulder: potentialLeftShoulder,
-          head: potentialHead,
-          rightShoulder: potentialRightShoulder
-        });
-        
-        setNeckline({
-          start: necklineStart,
-          end: necklineEnd
-        });
-        
-        return;
-      }
-    }
-    
-    setPattern(null);
-    setNeckline(null);
-  };
-
-  const findPeaksAndTroughs = (priceData) => {
-    const peaks = [];
-    
-    for (let i = 1; i < priceData.length - 1; i++) {
-      const prev = priceData[i - 1].price;
-      const curr = priceData[i].price;
-      const next = priceData[i + 1].price;
-      
-      if (curr > prev && curr > next) {
-        peaks.push({
-          index: i,
-          price: curr,
-          type: 'peak'
+      if (head.price > leftShoulder.price && 
+          head.price > rightShoulder.price &&
+          Math.abs(leftShoulder.price - rightShoulder.price) / leftShoulder.price < 0.05) {
+        patterns.push({
+          leftShoulder,
+          head,
+          rightShoulder
         });
       }
     }
     
-    return peaks;
+    return patterns;
   };
 
-  const isValidHeadAndShoulders = (leftShoulder, head, rightShoulder, priceData) => {
-    // Head should be higher than shoulders
-    if (head.price <= leftShoulder.price || head.price <= rightShoulder.price) return false;
-    
-    // Shoulders should be roughly equal height (within 10%)
-    const shoulderDiff = Math.abs(leftShoulder.price - rightShoulder.price);
-    if (shoulderDiff / leftShoulder.price > 0.1) return false;
-    
-    // Check spacing between points
-    const leftSpacing = head.index - leftShoulder.index;
-    const rightSpacing = rightShoulder.index - head.index;
-    if (Math.abs(leftSpacing - rightSpacing) / leftSpacing > 0.3) return false;
-    
-    return true;
-  };
-
-  const findNecklinePoint = (shoulder, priceData) => {
-    // Find lowest point between shoulder and head
-    let lowestPoint = { price: Infinity };
-    
-    for (let i = shoulder.index; i < shoulder.index + 5; i++) {
-      if (i < priceData.length && priceData[i].price < lowestPoint.price) {
-        lowestPoint = {
-          index: i,
-          price: priceData[i].price
-        };
-      }
+  const renderChart = (data, title) => {
+    if (!data?.prices || !Array.isArray(data.prices) || data.prices.length === 0) {
+      return (
+        <div className="bg-gray-800 rounded-lg p-4 mb-6">
+          <h3 className="text-lg font-medium text-gray-200 mb-4">{title}</h3>
+          <div>No data available</div>
+        </div>
+      );
     }
-    
-    return lowestPoint;
+
+    const patterns = detectPatterns(data);
+
+    return (
+      <div className="bg-gray-800 rounded-lg p-4 mb-6">
+        <h3 className="text-lg font-medium text-gray-200 mb-4">{title} - {symbol}</h3>
+        <div className="h-96">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data.prices}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <XAxis 
+                dataKey="date" 
+                stroke="rgba(255,255,255,0.5)"
+                tick={{ fill: 'rgba(255,255,255,0.5)' }}
+                tickFormatter={(value) => new Date(value).toLocaleDateString()}
+                interval={Math.floor(data.prices.length / 5)}
+              />
+              <YAxis 
+                stroke="rgba(255,255,255,0.5)"
+                tick={{ fill: 'rgba(255,255,255,0.5)' }}
+                tickFormatter={(value) => `$${value.toFixed(2)}`}
+                domain={['auto', 'auto']}
+              />
+              <Tooltip 
+                contentStyle={{
+                  backgroundColor: 'rgba(26,26,26,0.95)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '4px'
+                }}
+                labelFormatter={(value) => new Date(value).toLocaleDateString()}
+                formatter={(value) => [`$${parseFloat(value).toFixed(2)}`, 'Price']}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="value" 
+                stroke="#4ade80" 
+                dot={false} 
+                strokeWidth={2}
+              />
+              {patterns.map((pattern, i) => (
+                <React.Fragment key={i}>
+                  <ReferenceLine
+                    x={pattern.leftShoulder.date}
+                    stroke="#22c55e"
+                    strokeDasharray="3 3"
+                    label={{
+                      value: 'LS',
+                      position: 'top',
+                      fill: "#22c55e"
+                    }}
+                  />
+                  <ReferenceLine
+                    x={pattern.head.date}
+                    stroke="#22c55e"
+                    strokeDasharray="3 3"
+                    label={{
+                      value: 'H',
+                      position: 'top',
+                      fill: "#22c55e"
+                    }}
+                  />
+                  <ReferenceLine
+                    x={pattern.rightShoulder.date}
+                    stroke="#22c55e"
+                    strokeDasharray="3 3"
+                    label={{
+                      value: 'RS',
+                      position: 'top',
+                      fill: "#22c55e"
+                    }}
+                  />
+                </React.Fragment>
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        {patterns.length === 0 && (
+          <div className="mt-4 text-gray-400">
+            No head and shoulders patterns detected in this timeframe
+          </div>
+        )}
+        {patterns.length > 0 && (
+          <div className="mt-4 text-white">
+            <div className="font-semibold">Head and Shoulders Pattern Detected!</div>
+            <div className="text-sm text-gray-300 mt-2">
+              This classic reversal pattern suggests a potential trend change.
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
-  const calculatePriceTarget = () => {
-    if (!pattern || !neckline) return null;
-    
-    // Height of pattern
-    const patternHeight = pattern.head.price - neckline.start.price;
-    
-    // Price target is neckline minus pattern height
-    return neckline.start.price - patternHeight;
-  };
+  if (isLoading.long && isLoading.short && isLoading.veryShort) {
+    return <div className="bg-gray-800 rounded-lg p-4">
+      <h3 className="text-lg font-medium text-gray-200 mb-4">Loading pattern analysis for {symbol}...</h3>
+    </div>;
+  }
+
+  if (error) {
+    return <div className="bg-gray-800 rounded-lg p-4">
+      <h3 className="text-lg font-medium text-gray-200 mb-4">Error: {error}</h3>
+    </div>;
+  }
 
   return (
-    <Card className="w-full max-w-4xl bg-white">
-      <CardHeader>
-        <CardTitle>Head & Shoulders Pattern Detector</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="h-96">
-          <LineChart
-            width={800}
-            height={400}
-            data={data}
-            margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-          >
-            <XAxis dataKey="date" />
-            <YAxis />
-            <Tooltip />
-            <Line 
-              type="monotone" 
-              dataKey="price" 
-              stroke="#8884d8" 
-              dot={false} 
-            />
-            
-            {pattern && (
-              <>
-                {/* Mark pattern points */}
-                <ReferenceLine
-                  x={data[pattern.leftShoulder.index].date}
-                  stroke="green"
-                  label="LS"
-                />
-                <ReferenceLine
-                  x={data[pattern.head.index].date}
-                  stroke="red"
-                  label="H"
-                />
-                <ReferenceLine
-                  x={data[pattern.rightShoulder.index].date}
-                  stroke="green"
-                  label="RS"
-                />
-                
-                {/* Draw neckline */}
-                {neckline && (
-                  <ReferenceArea
-                    x1={data[neckline.start.index].date}
-                    x2={data[neckline.end.index].date}
-                    y1={neckline.start.price}
-                    y2={neckline.end.price}
-                    stroke="blue"
-                    strokeOpacity={0.3}
-                    label="Neckline"
-                  />
-                )}
-              </>
-            )}
-          </LineChart>
-        </div>
-
-        {pattern ? (
-          <Alert className="mt-4">
-            <AlertDescription>
-              Head & Shoulders pattern detected! 
-              Price target: ${calculatePriceTarget()?.toFixed(2)}
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <Alert className="mt-4">
-            <AlertDescription>
-              No Head & Shoulders pattern detected in current data
-            </AlertDescription>
-          </Alert>
-        )}
-      </CardContent>
-    </Card>
+    <div>
+      {renderChart(longTermData, "Head & Shoulders Pattern (200-Day)")}
+      {renderChart(shortTermData, "Head & Shoulders Pattern (40-Day)")}
+      {renderChart(veryShortTermData, "Head & Shoulders Pattern (10-Day)")}
+    </div>
   );
 };
 
